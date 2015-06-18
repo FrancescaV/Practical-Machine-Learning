@@ -1,0 +1,113 @@
+---
+title: "Practical Machine Learning"
+output: html_document
+---
+Francesca, June 2015
+
+#Summary
+
+"Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+The goal of your project is to predict the manner in which they did the exercise."
+
+Using 20% of the training set provided, I computed the out-of-sample accuracy to be 0.9659574. The accuracy increases to 0.9823189 using 50% of the training set. Potentially, it would increase even more considering the whole data set, but training the algorithm would take too long. 
+Below I explain the procedure adopted, limiting my sample size to 20% of the training set.
+
+#Data Analisis
+
+##Loading and Cleaning the Data
+
+First, I set up the working directory and load the training and final set provided with the instructions. The latter will be used in the second part of the project. Note, the missing values contained in the files can be either "NA", ""#DIV/0!", or "".
+
+```{r}
+setwd("/Users/francesca/Documents/coursera/DataScientist/MachineLearning/week3/project")
+trainALL <- read.csv("pml-training.csv", na.strings = c("NA","#DIV/0!", ""))
+toPredictALL <- read.csv("pml-testing.csv",  na.strings = c("NA","#DIV/0!", ""))
+```
+
+The number of rows and columns in the training set is `r dim(trainALL)[1]` and `r dim(trainALL)[2]`, respectively.
+
+Next, I get rid of the quantities that will not play a significant role in the machine learning algorithm, according to the suggestions the TAs gave on the Forum. Specifically, I will consider a subset of the data which does NOT include the first column "X", user_name", and the words "timestamp" or "window" in the column name. I apply the same transformation to both training and final set. 
+
+```{r}
+toErase <- grep ("user_name|timestamp|window", names(trainALL))
+trainALL_2 <- trainALL[,-c(1, toErase)]
+toPredictALL_2 <- toPredictALL[,-c(1, toErase)]
+```
+
+Next, I get rid of the columns with NA values. For this step, I collect the number of non-NA values in each colum, sum them up, and get rid of the columns where the total sum of non-NA values is different than the total number of entries (`r dim(trainALL)[1]`). The same transformations are applied to both training and final sets. 
+
+```{r}
+eraseNAcols <- apply(!is.na(trainALL_2[,-dim(trainALL_2)[2]]), 2,sum) 
+eraseNAcols <- as.numeric(eraseNAcols)
+eraseNAcols <- which(eraseNAcols == dim(trainALL)[1])
+eraseNAcols <- c(eraseNAcols,dim(trainALL_2)[2])
+trainALL_noNA <- trainALL_2[,eraseNAcols]
+toPredictALL_noNA <- toPredictALL_2[,eraseNAcols]
+```
+
+After these steps, the number of rows and columns in the training set is `r dim(trainALL_noNA)[1]` and `r dim(trainALL_noNA)[2]`, respectively. 
+
+## Cross-Validation
+
+Below I use my clean sample trainALL_noNA to create a training set and a test set. According to the cross-validation procedure described in the first week of class, I will then build the model on the training set and evaluate it on the test set. The evaluation on the test set will give me a good idea of the out-of-sample-error. Below, I estimate the error using the accuracy. In fact, as mentioned in the first week of class, the accuracy is one of the common error measures.
+
+Since the data file is huge, I only consider 20% of the data, following the discussions I saw on the forum. However, test runs show that playing with subsets of different sizes makes no sinificant difference in the final out-of-sample accuracy.
+From this subset, I then extract a training set, contating 70% of the subset, and a test set, containing the rest. I picked 70% because this number has been used in class.
+
+```{r}
+library(caret)
+set.seed(12345)
+trainALL_noNA_subset <- trainALL_noNA[sample(1:nrow(trainALL_noNA), 0.2*nrow(trainALL_noNA),replace=FALSE),]
+inTrain <- createDataPartition(y=trainALL_noNA_subset$classe, p=0.7, list=FALSE)
+training <- trainALL_noNA_subset[inTrain,]
+testing  <- trainALL_noNA_subset[-inTrain,]
+dim(training); dim(testing)
+```
+
+Note, I also checked for zero covariates (same as in week 2 of class), to see whether I can erase more columns, but I found none.
+
+
+##Trying different fitting models
+
+Below I try different models. I compute the model on the training set and use it on the test set, to compute the accuracy.
+
+
+###Recursive Partitioning and Regression Trees
+
+```{r}
+set.seed(12345)
+modFit_rpart <- train(classe~., data = training, method = "rpart")
+predictions_rpart_CV <- predict(modFit_rpart,newdata = testing)
+cm_rpart_CV <- confusionMatrix(predictions_rpart_CV,testing$classe) #cm
+accuracy_rpart_CV <- cm_rpart_CV$overall["Accuracy"]
+accuracy_rpart_CV
+```
+
+The accuracy on the test set (out-of-sample) is `r accuracy_rpart_CV`.
+
+###Random Forest
+
+```{r}
+modFit_rf <- train(classe~., data = training, method = "rf")
+predictions_rf_CV <- predict(modFit_rf,newdata = testing)
+cm_rf_CV <- confusionMatrix(predictions_rf_CV,testing$classe)
+accuracy_rf_CV <- cm_rf_CV$overall["Accuracy"]
+accuracy_rf_CV
+```
+
+The accuracy on the test set (out-of-sample) is `r accuracy_rf_CV` and it increases increasing the sample size considered for training the algorithm.
+
+
+##Applying the model to the final dataset
+
+Below I will use the Random Forest method on the final dataset (pml-testing.csv), as it gives me the best out-of-sample accuracy (`r accuracy_rf_CV`). I will then print out my predictions.
+Note, using 50% of the initial data to train the algorithm gives me the correct predictions for the whole final dataset.
+
+```{r}
+predictions_rf <- predict(modFit_rf,newdata = toPredictALL_noNA)
+predictions_rf
+```
+
+
+
+
